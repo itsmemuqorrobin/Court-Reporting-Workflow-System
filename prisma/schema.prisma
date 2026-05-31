@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+enum JobStatus {
+  NEW
+  ASSIGNED
+  TRANSCRIBED
+  REVIEWED
+  COMPLETED
+}
+
+enum JobLocationType {
+  PHYSICAL
+  REMOTE
+}
+
+enum ReviewStatus {
+  NOT_STARTED
+  IN_REVIEW
+  APPROVED
+}
+
+model Reporter {
+  id            String   @id @default(cuid())
+  name          String
+  city          String
+  isAvailable   Boolean  @default(true)
+  ratePerMinute Int      @default(2000)
+  jobs          Job[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Editor {
+  id          String   @id @default(cuid())
+  name        String
+  isAvailable Boolean  @default(true)
+  flatFee     Int      @default(50000)
+  jobs        Job[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Job {
+  id              String          @id @default(cuid())
+  caseName        String
+  durationMinutes Int
+  locationType    JobLocationType
+  city            String?
+  status          JobStatus       @default(NEW)
+  reviewStatus    ReviewStatus    @default(NOT_STARTED)
+
+  reporterId String?
+  reporter   Reporter? @relation(fields: [reporterId], references: [id])
+
+  editorId String?
+  editor   Editor? @relation(fields: [editorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
