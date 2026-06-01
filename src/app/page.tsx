@@ -179,18 +179,76 @@ function EmptyState() {
   );
 }
 
+function getRecommendedReporter(job: Job, reporters: Reporter[]) {
+  const availableReporters = reporters.filter(
+    (reporter) => reporter.isAvailable,
+  );
+
+  if (availableReporters.length === 0) {
+    return null;
+  }
+
+  if (job.locationType === "PHYSICAL" && job.city) {
+    const sameCityReporter = availableReporters.find(
+      (reporter) => reporter.city.toLowerCase() === job.city?.toLowerCase(),
+    );
+
+    if (sameCityReporter) {
+      return sameCityReporter;
+    }
+  }
+
+  return availableReporters[0];
+}
+
+function getReporterRecommendationReason(job: Job, reporter: Reporter | null) {
+  if (!reporter) {
+    return "No available reporter right now.";
+  }
+
+  if (
+    job.locationType === "PHYSICAL" &&
+    job.city &&
+    reporter.city.toLowerCase() === job.city.toLowerCase()
+  ) {
+    return "Recommended because this reporter is in the same city.";
+  }
+
+  if (job.locationType === "REMOTE") {
+    return "Recommended because remote jobs can be handled by any available reporter.";
+  }
+
+  return "Recommended as the first available reporter.";
+}
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [reporters, setReporters] = useState<Reporter[]>([]);
+  const [editors, setEditors] = useState<Editor[]>([]);
   const [caseName, setCaseName] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [locationType, setLocationType] = useState<JobLocationType>("PHYSICAL");
   const [city, setCity] = useState("Jakarta");
   const [statusFilter, setStatusFilter] = useState<JobStatus | "ALL">("ALL");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [selectedReporterByJobId, setSelectedReporterByJobId] = useState<
+    Record<string, string>
+  >({});
+  const [selectedEditorByJobId, setSelectedEditorByJobId] = useState<
+    Record<string, string>
+  >({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
+
+  const availableReporters = useMemo(() => {
+    return reporters.filter((reporter) => reporter.isAvailable);
+  }, [reporters]);
+
+  const availableEditors = useMemo(() => {
+    return editors.filter((editor) => editor.isAvailable);
+  }, [editors]);
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
@@ -224,15 +282,26 @@ export default function Home() {
     ).length;
   }, [jobs]);
 
-  async function loadJobs() {
+  async function loadDashboardData() {
     try {
       setIsLoading(true);
-      const data = await fetchJson<Job[]>("/api/jobs");
-      setJobs(data);
+
+      const [jobsData, reportersData, editorsData] = await Promise.all([
+        fetchJson<Job[]>("/api/jobs"),
+        fetchJson<Reporter[]>("/api/reporters"),
+        fetchJson<Editor[]>("/api/editors"),
+      ]);
+
+      setJobs(jobsData);
+      setReporters(reportersData);
+      setEditors(editorsData);
     } catch (error) {
       setMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Failed to load jobs",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to load dashboard data",
       });
     } finally {
       setIsLoading(false);
@@ -240,7 +309,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    loadJobs();
+    loadDashboardData();
   }, []);
 
   async function handleCreateJob(event: FormEvent<HTMLFormElement>) {
@@ -270,7 +339,7 @@ export default function Home() {
         text: "Job created successfully.",
       });
 
-      await loadJobs();
+      await loadDashboardData();
     } catch (error) {
       setMessage({
         type: "error",
@@ -291,7 +360,7 @@ export default function Home() {
       setMessage(null);
 
       await action();
-      await loadJobs();
+      await loadDashboardData();
 
       setMessage({
         type: "success",
@@ -307,27 +376,39 @@ export default function Home() {
     }
   }
 
-  function assignReporter(jobId: string) {
+  function assignReporter(job: Job) {
+    const selectedReporterId = selectedReporterByJobId[job.id];
+
     return runJobAction(
-      jobId,
+      job.id,
       () =>
-        fetchJson<Job>(`/api/jobs/${jobId}/assign-reporter`, {
+        fetchJson<Job>(`/api/jobs/${job.id}/assign-reporter`, {
           method: "POST",
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            reporterId: selectedReporterId || undefined,
+          }),
         }),
-      "Reporter assigned successfully.",
+      selectedReporterId
+        ? "Selected reporter assigned successfully."
+        : "Recommended reporter assigned successfully.",
     );
   }
 
-  function assignEditor(jobId: string) {
+  function assignEditor(job: Job) {
+    const selectedEditorId = selectedEditorByJobId[job.id];
+
     return runJobAction(
-      jobId,
+      job.id,
       () =>
-        fetchJson<Job>(`/api/jobs/${jobId}/assign-editor`, {
+        fetchJson<Job>(`/api/jobs/${job.id}/assign-editor`, {
           method: "POST",
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            editorId: selectedEditorId || undefined,
+          }),
         }),
-      "Editor assigned successfully.",
+      selectedEditorId
+        ? "Selected editor assigned successfully."
+        : "Available editor assigned successfully.",
     );
   }
 
@@ -339,7 +420,101 @@ export default function Home() {
           method: "PATCH",
           body: JSON.stringify({ status }),
         }),
-      `Job moved to ${statusLabel[status]}.`,
+      status === "COMPLETED"
+        ? "Job completed. Reporter and editor are now available again."
+        : `Job moved to ${statusLabel[status]}.`,
+    );
+  }
+
+  function renderReporterAssignment(job: Job) {
+    const isBusy = activeJobId === job.id;
+    const recommendedReporter = getRecommendedReporter(job, reporters);
+    const recommendationReason = getReporterRecommendationReason(
+      job,
+      recommendedReporter,
+    );
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-3 text-left">
+          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">
+            Smart Recommendation
+          </p>
+          <p className="mt-1 text-sm font-bold text-white">
+            {recommendedReporter
+              ? `${recommendedReporter.name} — ${recommendedReporter.city}`
+              : "No available reporter"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            {recommendationReason}
+          </p>
+        </div>
+
+        <select
+          value={selectedReporterByJobId[job.id] ?? ""}
+          onChange={(event) =>
+            setSelectedReporterByJobId((current) => ({
+              ...current,
+              [job.id]: event.target.value,
+            }))
+          }
+          disabled={availableReporters.length === 0 || isBusy}
+          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white outline-none transition focus:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option value="">Use recommendation</option>
+          {availableReporters.map((reporter) => (
+            <option key={reporter.id} value={reporter.id}>
+              {reporter.name} — {reporter.city} —{" "}
+              {formatIDR(reporter.ratePerMinute)}/min
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          disabled={isBusy || availableReporters.length === 0}
+          onClick={() => assignReporter(job)}
+          className="w-full whitespace-nowrap rounded-xl bg-cyan-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isBusy ? "Assigning..." : "Assign Reporter"}
+        </button>
+      </div>
+    );
+  }
+
+  function renderEditorAssignment(job: Job) {
+    const isBusy = activeJobId === job.id;
+
+    return (
+      <div className="space-y-3">
+        <select
+          value={selectedEditorByJobId[job.id] ?? ""}
+          onChange={(event) =>
+            setSelectedEditorByJobId((current) => ({
+              ...current,
+              [job.id]: event.target.value,
+            }))
+          }
+          disabled={availableEditors.length === 0 || isBusy}
+          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white outline-none transition focus:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option value="">Use first available editor</option>
+          {availableEditors.map((editor) => (
+            <option key={editor.id} value={editor.id}>
+              {editor.name} — {formatIDR(editor.flatFee)} flat fee
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          disabled={isBusy || availableEditors.length === 0}
+          onClick={() => assignEditor(job)}
+          className="w-full whitespace-nowrap rounded-xl bg-purple-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isBusy ? "Assigning..." : "Assign Editor"}
+        </button>
+      </div>
     );
   }
 
@@ -347,16 +522,7 @@ export default function Home() {
     const isBusy = activeJobId === job.id;
 
     if (job.status === "NEW") {
-      return (
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={() => assignReporter(job.id)}
-          className="whitespace-nowrap rounded-xl bg-cyan-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isBusy ? "Assigning..." : "Assign Reporter"}
-        </button>
-      );
+      return renderReporterAssignment(job);
     }
 
     if (job.status === "ASSIGNED") {
@@ -365,7 +531,7 @@ export default function Home() {
           type="button"
           disabled={isBusy}
           onClick={() => updateStatus(job.id, "TRANSCRIBED")}
-          className="whitespace-nowrap rounded-xl bg-amber-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full whitespace-nowrap rounded-xl bg-amber-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isBusy ? "Updating..." : "Mark Transcribed"}
         </button>
@@ -373,16 +539,7 @@ export default function Home() {
     }
 
     if (job.status === "TRANSCRIBED" && !job.editor) {
-      return (
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={() => assignEditor(job.id)}
-          className="whitespace-nowrap rounded-xl bg-purple-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isBusy ? "Assigning..." : "Assign Editor"}
-        </button>
-      );
+      return renderEditorAssignment(job);
     }
 
     if (job.status === "TRANSCRIBED" && job.editor) {
@@ -391,7 +548,7 @@ export default function Home() {
           type="button"
           disabled={isBusy}
           onClick={() => updateStatus(job.id, "REVIEWED")}
-          className="whitespace-nowrap rounded-xl bg-purple-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full whitespace-nowrap rounded-xl bg-purple-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isBusy ? "Updating..." : "Mark Reviewed"}
         </button>
@@ -404,7 +561,7 @@ export default function Home() {
           type="button"
           disabled={isBusy}
           onClick={() => updateStatus(job.id, "COMPLETED")}
-          className="whitespace-nowrap rounded-xl bg-emerald-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full whitespace-nowrap rounded-xl bg-emerald-400 px-3 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isBusy ? "Updating..." : "Complete Job"}
         </button>
@@ -412,7 +569,7 @@ export default function Home() {
     }
 
     return (
-      <span className="whitespace-nowrap rounded-xl border border-emerald-800 bg-emerald-950 px-3 py-2 text-[11px] font-semibold text-emerald-200">
+      <span className="block whitespace-nowrap rounded-xl border border-emerald-800 bg-emerald-950 px-3 py-2 text-center text-[11px] font-semibold text-emerald-200">
         Completed
       </span>
     );
@@ -597,11 +754,34 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={loadJobs}
+                onClick={loadDashboardData}
                 className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 sm:w-auto"
               >
                 Refresh Data
               </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-xs text-slate-500">Available Reporters</p>
+                <p className="mt-1 text-xl font-black text-cyan-300">
+                  {availableReporters.length}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-xs text-slate-500">Available Editors</p>
+                <p className="mt-1 text-xl font-black text-purple-300">
+                  {availableEditors.length}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                <p className="text-xs text-slate-500">Resource Rule</p>
+                <p className="mt-1 text-sm font-semibold text-slate-200">
+                  Released after completion
+                </p>
+              </div>
             </div>
 
             <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_180px] xl:grid-cols-[minmax(0,1fr)_200px]">
@@ -716,23 +896,21 @@ export default function Home() {
                           </div>
                         </div>
 
-                        <div className="mt-4 flex justify-end">
-                          {renderPrimaryAction(job)}
-                        </div>
+                        <div className="mt-4">{renderPrimaryAction(job)}</div>
                       </article>
                     ))}
                   </div>
 
                   <div className="hidden min-w-0 overflow-x-auto xl:block">
-                    <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-y-3 text-left text-sm">
+                    <table className="w-full min-w-[1080px] table-fixed border-separate border-spacing-y-3 text-left text-sm">
                       <thead className="text-xs uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="w-[20%] px-4">Case</th>
-                          <th className="w-[28%] px-4">Workflow</th>
-                          <th className="w-[16%] px-4">Reporter</th>
-                          <th className="w-[14%] px-4">Editor</th>
-                          <th className="w-[14%] px-4">Payment</th>
-                          <th className="w-[8%] px-4 text-right">Action</th>
+                          <th className="w-[18%] px-4">Case</th>
+                          <th className="w-[24%] px-4">Workflow</th>
+                          <th className="w-[14%] px-4">Reporter</th>
+                          <th className="w-[13%] px-4">Editor</th>
+                          <th className="w-[13%] px-4">Payment</th>
+                          <th className="w-[18%] px-4 text-right">Action</th>
                         </tr>
                       </thead>
 
@@ -758,7 +936,7 @@ export default function Home() {
                               <p className="mt-2 text-xs text-slate-500">
                                 Review: {job.reviewStatus}
                               </p>
-                              <div className="mt-4 max-w-[340px]">
+                              <div className="mt-4 max-w-[320px]">
                                 <WorkflowProgress status={job.status} />
                               </div>
                             </td>
