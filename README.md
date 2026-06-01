@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Court Reporting Workflow Manager
 
-## Getting Started
+A simple fullstack technical assessment project for managing court reporting transcription workflows.
 
-First, run the development server:
+Overview of the application like the image below:
+![Application Overview](https://github.com/user-attachments/assets/881525ed-915e-495c-a578-d11a9793c3c2)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+This assesment test application is already deployed and ready to test in production. You can test at [This Link](https://court-reporting-workflow-system.vercel.app/) to test the application.
+
+You can visit [This Link](https://drive.google.com/drive/folders/1aWiV4OezlvV-8XIIxIko_I_6ijwQIxEY?usp=sharing) to see I present and demo the application.
+
+## Architecture
+
+I Architected this application with hybrid approach, meaning I combined Client-side rendering with Server-side rendering produced as REST API.
+
+![Architecture Overview](https://github.com/user-attachments/assets/bf61180d-d94f-4537-af4b-e93b6fa961a1)
+
+## Tech Stack
+
+- Next.js
+- TypeScript
+- React Client Components
+- REST API using Next.js Route Handlers
+- PostgreSQL
+- Prisma ORM
+- Zod
+- Tailwind CSS
+
+## Main Features
+
+- Create transcription jobs
+- List all jobs
+- Assign reporter to a job
+- Prefer same-city reporter for physical jobs
+- Allow remote jobs to use any available reporter
+- Assign editor after transcription
+- Track job status workflow
+- Calculate reporter payout per minute
+- Calculate editor flat-fee payout
+- Display total payout per job
+- Display total payout summary
+- Responsive dashboard UI
+
+## Bonus Features
+
+- manual reporter/editor assignment
+- smart reporter recommendation based on job location and availability
+- resource availability release after job completion
+- unit tests for workflow transitions, reporter assignment logic, and payment calculation
+
+## Workflow
+
+```txt
+NEW → ASSIGNED → TRANSCRIBED → REVIEWED → COMPLETED
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Getting Started to Run Locally
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Install Dependencies
 
-## Learn More
+```sh
+npm install
+```
 
-To learn more about Next.js, take a look at the following resources:
+### Adjust .env
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sh
+DATABASE_URL=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### All in once. Build, Migrate, & Generate the schema
 
-## Deploy on Vercel
+```sh
+npm run vercel-build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Start the application
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```sh
+npm start
+```
