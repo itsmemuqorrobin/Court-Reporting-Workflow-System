@@ -582,7 +582,7 @@ export default function Home() {
           <div className="grid min-w-0 gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] lg:p-8">
             <div className="min-w-0">
               <div className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-200">
-                AutoScript Fullstack Assessment
+                VoiceScript Fullstack Assessment
               </div>
 
               <h1 className="mt-5 max-w-3xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
