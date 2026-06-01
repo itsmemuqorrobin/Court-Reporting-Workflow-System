@@ -49,22 +49,50 @@ export async function PATCH(request: Request, { params }: Params) {
       return errorResponse("Editor must be assigned before review", 400);
     }
 
-    const job = await prisma.job.update({
-      where: { id },
-      data: {
-        status: payload.status,
-        reviewStatus:
-          payload.status === "REVIEWED"
-            ? ReviewStatus.APPROVED
-            : currentJob.reviewStatus,
-      },
-      include: {
-        reporter: true,
-        editor: true,
-      },
+    const updatedJob = await prisma.$transaction(async (tx) => {
+      const job = await tx.job.update({
+        where: { id },
+        data: {
+          status: payload.status,
+          reviewStatus:
+            payload.status === "REVIEWED"
+              ? ReviewStatus.APPROVED
+              : currentJob.reviewStatus,
+        },
+        include: {
+          reporter: true,
+          editor: true,
+        },
+      });
+
+      if (payload.status === "COMPLETED") {
+        if (currentJob.reporterId) {
+          await tx.reporter.update({
+            where: {
+              id: currentJob.reporterId,
+            },
+            data: {
+              isAvailable: true,
+            },
+          });
+        }
+
+        if (currentJob.editorId) {
+          await tx.editor.update({
+            where: {
+              id: currentJob.editorId,
+            },
+            data: {
+              isAvailable: true,
+            },
+          });
+        }
+      }
+
+      return job;
     });
 
-    return successResponse(serializeJob(job));
+    return successResponse(serializeJob(updatedJob));
   } catch (error) {
     return handleApiError(error);
   }
